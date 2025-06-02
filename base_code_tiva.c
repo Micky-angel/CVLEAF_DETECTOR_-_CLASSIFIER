@@ -10,6 +10,8 @@
 #include "driverlib/pwm.h"
 #include "driverlib/pin_map.h"
 #include "driverlib/adc.h"
+#include "driverlib/uart.h"
+
 
 
 
@@ -34,7 +36,8 @@
 // === PWM 1: PK4 - M0PWM6
 #define PWM1_PORT GPIO_PORTK_BASE
 #define PWM1_PIN  GPIO_PIN_4
-#define PWM1_BASE PWM0_BASE
+#define PWM1_BASE PWM0_BASE 
+
 #define PWM1_GEN  PWM_GEN_3
 #define PWM1_OUT  PWM_OUT_6
 #define PWM1_BIT  PWM_OUT_6_BIT
@@ -197,6 +200,12 @@ uint32_t leer_adc_valor(void) {
     return resultado;  // Valor entre 0 y 4095
 }
 
+void uart_enviar_string(const char *str) {
+    while (*str) {
+        UARTCharPut(UART0_BASE, *str++);
+    }
+}
+
 
 //--------------------------------------------------------------------------------TIMER 100ms
 // === Interrupción del Timer0A cada 100 ms para parpadear PN1 ===
@@ -206,17 +215,33 @@ void Timer0IntHandler(void) {
 }
 
 
+
+
 // --------------------------------------------------------------------------------------
 
+//                            MAIN VOID
 
-
-
+// --------------------------------------------------------------------------------------
 
 int main(void)
 {
     // === Configurar sistema a 120 MHz ===
     SysCtlClockFreqSet((SYSCTL_XTAL_25MHZ | SYSCTL_OSC_MAIN |
                         SYSCTL_USE_PLL | SYSCTL_CFG_VCO_480), 120000000);
+    // === UART
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_UART0);
+    SysCtlPeripheralEnable(SYSCTL_PERIPH_GPIOA);
+    GPIOPinConfigure(GPIO_PA0_U0RX);
+    GPIOPinConfigure(GPIO_PA1_U0TX);
+    GPIOPinTypeUART(GPIO_PORTA_BASE, GPIO_PIN_0 | GPIO_PIN_1);
+    UARTConfigSetExpClk(UART0_BASE, SysCtlClockGet(), 115200,
+                    UART_CONFIG_WLEN_8 | UART_CONFIG_STOP_ONE | UART_CONFIG_PAR_NONE);
+    const char t_sent[] = "664051\n";
+    char t_received[20];
+    uint8_t index = 0;
+
+
+
 
     // === LED PN1 (N1) salida digital ===
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPION);
@@ -258,8 +283,12 @@ int main(void)
     uint32_t valor_pot;
     float duty;
     
+// --------------------------------------------------------------------------------------
 
-//------------------------------------------------------------------------------MAIN WHILE
+//                            MAIN WHILE(1)
+
+// --------------------------------------------------------------------------------------
+
     while (1)
     {
         valor_pot = leer_adc_valor();
@@ -279,8 +308,25 @@ int main(void)
         }
 
         high = !high;
+        
+//-------------------------------------------------------------------------------------
 
-        delay_ms(10); 
+//                                          UART BASE
+
+//-------------------------------------------------------------------------------------
+
+	uart_enviar_string(t_sent);
+
+	// Recibir si hay disponible
+	if (UARTCharsAvail(UART0_BASE)) {
+	    char c = UARTCharGet(UART0_BASE);
+	    t_received[index++] = c;
+	    t_received[index] = '\0';  // Null-terminate
+	    if (index >= sizeof(t_received) - 1) index = 0;  // Reset si se llena
+	}
+
+
+        delay_ms(100); 
     }
 
 // --------------------------------------------------------------------------------------
