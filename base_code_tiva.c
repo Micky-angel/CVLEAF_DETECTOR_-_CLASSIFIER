@@ -21,6 +21,16 @@
 #define LED_TIMER_PORT GPIO_PORTN_BASE
 #define LED_TIMER_PIN  GPIO_PIN_1
 
+// === Definiciones de botones ===
+#define BOTON1_PORT    GPIO_PORTC_BASE
+#define BOTON1_PIN     GPIO_PIN_5
+#define BOTON1_PULL    PULL_UP
+
+#define BOTON2_PORT    GPIO_PORTJ_BASE
+#define BOTON2_PIN     GPIO_PIN_1
+#define BOTON2_PULL    PULL_DOWN
+
+
 // === PWM 1: PK4 - M0PWM6
 #define PWM1_PORT GPIO_PORTK_BASE
 #define PWM1_PIN  GPIO_PIN_4
@@ -50,6 +60,13 @@
 #define PWM_FREQUENCY 1000
 uint32_t pwmLoad;
 
+typedef enum {
+    NO_PULL,
+    PULL_UP,
+    PULL_DOWN
+} gpio_resistencia_t;
+
+
 // === Retardo en milisegundos basado en SysCtlDelay()
 void delay_ms(uint32_t ms) {
     SysCtlDelay((120000000 / 3000) * ms);
@@ -75,6 +92,55 @@ void toggle_led(uint32_t puerto, uint8_t pin) {
     uint8_t estado = GPIOPinRead(puerto, pin);
     GPIOPinWrite(puerto, pin, estado ^ pin);
 }
+
+// === Función para configurar BOTONES como entrada digital ===
+void configurar_boton(uint32_t puerto, uint8_t pin, gpio_resistencia_t tipo_resistencia) {
+    // Habilita el periférico del GPIO correspondiente
+    SysCtlPeripheralEnable(
+        (puerto == GPIO_PORTA_BASE) ? SYSCTL_PERIPH_GPIOA :
+        (puerto == GPIO_PORTB_BASE) ? SYSCTL_PERIPH_GPIOB :
+        (puerto == GPIO_PORTC_BASE) ? SYSCTL_PERIPH_GPIOC :
+        (puerto == GPIO_PORTD_BASE) ? SYSCTL_PERIPH_GPIOD :
+        (puerto == GPIO_PORTE_BASE) ? SYSCTL_PERIPH_GPIOE :
+        (puerto == GPIO_PORTF_BASE) ? SYSCTL_PERIPH_GPIOF :
+        (puerto == GPIO_PORTG_BASE) ? SYSCTL_PERIPH_GPIOG :
+        (puerto == GPIO_PORTH_BASE) ? SYSCTL_PERIPH_GPIOH :
+        (puerto == GPIO_PORTJ_BASE) ? SYSCTL_PERIPH_GPIOJ :
+        (puerto == GPIO_PORTK_BASE) ? SYSCTL_PERIPH_GPIOK :
+        (puerto == GPIO_PORTL_BASE) ? SYSCTL_PERIPH_GPIOL :
+        (puerto == GPIO_PORTM_BASE) ? SYSCTL_PERIPH_GPIOM :
+        (puerto == GPIO_PORTN_BASE) ? SYSCTL_PERIPH_GPION :
+        (puerto == GPIO_PORTQ_BASE) ? SYSCTL_PERIPH_GPIOQ : 0);
+
+    // Configurar como entrada
+    GPIOPinTypeGPIOInput(puerto, pin);
+
+    // Configurar tipo de resistencia
+    switch (tipo_resistencia) {
+        case PULL_UP:
+            GPIOPadConfigSet(puerto, pin, GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD_WPU);
+            break;
+        case PULL_DOWN:
+            GPIOPadConfigSet(puerto, pin, GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD_WPD);
+            break;
+        case NO_PULL:
+        default:
+            GPIOPadConfigSet(puerto, pin, GPIO_STRENGTH_2MA, GPIO_PIN_TYPE_STD);
+            break;
+    }
+}
+
+// === Función para checkear BOTONES como entrada digital ===
+bool boton_presionado(uint32_t puerto, uint8_t pin, gpio_resistencia_t tipo_resistencia) {
+    uint8_t estado = GPIOPinRead(puerto, pin) & pin;
+
+    if (tipo_resistencia == PULL_UP) {
+        return (estado == 0);  // Activo bajo
+    } else {
+        return (estado != 0);  // Activo alto
+    }
+}
+
 
 // === Configura PWM en un pin específico
 void configurar_pwm_led(uint32_t pwm_base, uint32_t gen, uint32_t out, uint32_t bit,
@@ -154,6 +220,7 @@ int main(void)
 
     // === LED PN1 (N1) salida digital ===
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPION);
+    //--add the others if needed ------------------ - - - - - 
     while (!SysCtlPeripheralReady(SYSCTL_PERIPH_GPION)) {}
     configurar_led(LED_TIMER_PORT, LED_TIMER_PIN);
     
@@ -161,6 +228,9 @@ int main(void)
     SysCtlPeripheralEnable(SYSCTL_PERIPH_GPION);
     while (!SysCtlPeripheralReady(SYSCTL_PERIPH_GPION)) {}
     configurar_led(LED0_TIMER_PORT, LED0_TIMER_PIN);
+    
+    // === BOTON1 entrada digital ===
+    configurar_boton(BOTON1_PORT, BOTON1_PIN, NO_PULL);
 
 
     // === Configurar PWM en PK4 (M0PWM6) ===
@@ -196,7 +266,7 @@ int main(void)
         duty = 0.05+valor_pot /5100.0f;
         ajustar_pwm_duty(PWM1_BASE, PWM1_OUT, duty);
         
-        if (high) {
+        if (boton_presionado(BOTON1_PORT, BOTON1_PIN, NO_PULL )) {
             
             ajustar_pwm_duty(PWM2_BASE, PWM2_OUT, 1.0f);
             prender_led_gpio(GPIO_PORTN_BASE, LED0_TIMER_PIN);
